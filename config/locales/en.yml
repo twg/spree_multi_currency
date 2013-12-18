@@ -5,3 +5,5 @@ en:
   prices: "Prices"
   show_currency_selector: "Show Currency Selector"
   supported_currencies: "Supported Currencies"
+  master: "Master"
+  currency: "Currency"

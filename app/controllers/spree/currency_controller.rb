@@ -1,13 +1,15 @@
 module Spree
   class CurrencyController < Spree::StoreController
+    before_action :load_currency
+    before_action :load_order
 
     def set
-      @currency = supported_currencies.find { |currency| currency.iso_code == params[:currency] }
-      # make shure that we update the current order, so the currency change is reflected
-      if current_order
+      Spree::Config[:currency] = session[:currency] = params[:currency] if Spree::Config[:allow_currency_change]
+
+      if @order
         update_order!
       end
-      session[:currency] = params[:currency] if Spree::Config[:allow_currency_change]
+
       respond_to do |format|
         format.json { render json: !@currency.nil? }
         format.html do
@@ -19,39 +21,24 @@ module Spree
 
     private
 
-    # Updates the order's prices and all line items prices
-    def update_order!
+    def load_currency
+      @currency = supported_currencies.find { |currency| currency.iso_code == params[:currency] }
+    end
+
+    def load_order
       @order = current_order
-      if update_line_items!
-        @order.update_attributes!(currency: @currency.iso_code)
-        @order.update!
-      end
     end
 
-    # Updates prices of order's line items
-    def update_line_items!
+    def update_order!
+      @order.update_attributes!(currency: @currency.iso_code)
+      @order.update!
+
       return unless @order.line_items.any?
-      @order.line_items.each do |line_item|
-        update_line_item_price!(line_item)
-      end
-    end
 
-    # Returns the price object from given item
-    def price_from_line_item(line_item)
-      return unless line_item.variant
-      line_item.variant.prices.detect { |p| p.currency == @currency.iso_code }
+      # it's important to do this after the order's currency has been changed
+      # as the copy_price method in the tweegy repo will automatically update the price of
+      # the line item from the variant, and using the order's currency. 
+      @order.line_items.each { |line_item| line_item.copy_price; line_item.save! }
     end
-
-    # Updates price from given line item
-    def update_line_item_price!(line_item)
-      price = price_from_line_item(line_item)
-      if price
-        # Mass Assignment Protection \o/
-        line_item.currency = price.currency
-        line_item.price = price.amount
-        line_item.save!
-      end
-    end
-
   end
 end
